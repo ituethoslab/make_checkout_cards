@@ -5,6 +5,10 @@ Uses a Word file as a template.
 """
 
 import logging
+import requests
+from time import sleep
+from configparser import ConfigParser
+import pandas as pd
 from docx import Document
 
 logger = logging.getLogger()
@@ -79,3 +83,55 @@ class CheckoutCard():
 
         logging.debug("Writing %s", filename)
         self._doc.save(filename)
+
+
+class GoogleBooks():
+    """A Google Books API representation."""
+    ENDPOINT = 'https://www.googleapis.com/books/v1/volumes'
+    FIELDS = 'items/volumeInfo(authors,title,subtitle,publishedDate)'
+
+    def __init__(self, configfile):
+        self._config = ConfigParser()
+        self._config.read(configfile)
+        logging.debug("Made %s", self.__dir__)
+
+    def getByIsbn(self, isbn, throttle=1):
+        logging.debug("Querying %s", isbn)
+        creds = {'key': self._config['google']['key']}
+        query = {'q': 'isbn:' + isbn, 'fields': self.FIELDS}
+        params = {**creds, **query}
+
+        logging.debug("Throttling for %s seconds", throttle)
+        sleep(throttle)
+
+        logging.debug("Would query %s with %s", self.ENDPOINT, params)
+        resp = requests.get(self.ENDPOINT, params=params)
+        logging.debug(resp)
+        if resp.ok:
+            logging.debug("Retrieved %s", resp.json())
+            return resp.json()
+
+
+class Catalogue():
+    """A catalogue for ETHOS Lab."""
+    def __init__(self, datafile, resolver):
+        logging.debug("Reading catalogue from %s", datafile)
+        self._resolver = resolver
+        self._barcodes=pd.read_csv(datafile,
+                                   dtype={'Barcode': str})
+        self.populate()
+
+    def populate(self):
+        self.items = [PublicationWork(self._resolver.getByIsbn(isbn) for isbn in self._barcodes['Barcode']]]
+
+class PublicationWork():
+    def __init__(self, author, title, subtitle, year):
+        """Construct the object."""
+        self.author = author
+        self.title = title
+        self.subtitle = subtitle
+        self.year = year
+
+    def __str__(self):
+        """Return as string."""
+        return f"{self.author}: {self.title} ({self.year})"
