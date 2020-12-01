@@ -6,6 +6,7 @@ Uses a Word file as a template.
 
 import logging
 import requests
+import json
 from time import sleep
 from configparser import ConfigParser
 import pandas as pd
@@ -95,7 +96,7 @@ class GoogleBooks():
         self._config.read(configfile)
         logging.debug("Made %s", self.__dir__)
 
-    def getByIsbn(self, isbn, throttle=1):
+    def getByIsbn(self, isbn, throttle=2):
         logging.debug("Querying %s", isbn)
         creds = {'key': self._config['google']['key']}
         query = {'q': 'isbn:' + isbn, 'fields': self.FIELDS}
@@ -114,15 +115,38 @@ class GoogleBooks():
 
 class Catalogue():
     """A catalogue for ETHOS Lab."""
+
+    JSONFILE = 'ethos-lib.catalogue.json'
+
     def __init__(self, datafile, resolver):
         logging.debug("Reading catalogue from %s", datafile)
-        self._resolver = resolver
+        self._resolver=resolver
         self._barcodes=pd.read_csv(datafile,
                                    dtype={'Barcode': str})
+        self.items = {}
         self.populate()
 
-    def populate(self):
-        self.items = [PublicationWork(self._resolver.getByIsbn(isbn) for isbn in self._barcodes['Barcode']]]
+    def populate(self, load=True, persist=True):
+        if load:
+            with open(self.JSONFILE) as fd:
+                self.items = json.load(fd)
+
+        for barcode in self._barcodes['Barcode']:
+            if barcode not in self.items:
+                work = self._resolver.getByIsbn(barcode)
+                volume = work['items'][0]['volumeInfo']
+                self.items[barcode] = volume
+        # self.items = [PublicationWork(self._resolver.getByIsbn(isbn)) for isbn in self._barcodes['Barcode']]]
+        if persist:
+            self.persist()
+
+    def persist(self):
+        """Persist to a file."""
+        logging.debug("Persisting %s items", len(self.items))
+        with open(self.JSONFILE, 'w') as fd:
+            serialized_items = json.dumps(self.items, indent=2)
+            fd.write(serialized_items)
+
 
 class PublicationWork():
     def __init__(self, author, title, subtitle, year):

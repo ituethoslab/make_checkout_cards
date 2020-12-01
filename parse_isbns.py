@@ -11,4 +11,3 @@ if __name__ == '__main__':
     for item in catalogue.items:
         print()
         print(item)
-
