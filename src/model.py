@@ -6,6 +6,7 @@ Uses a Word file as a template.
 
 import logging
 import json
+from datetime import datetime
 from time import sleep
 from configparser import ConfigParser
 import requests
@@ -86,6 +87,71 @@ class CheckoutCard():
         self._doc.save(filename)
 
 
+class CheckoutCardTwoCols(CheckoutCard):
+    """A two-colung checkout card."""
+
+    FILE = 'templates/ethos library checkout card-two columns.docx'
+
+    # def __init__(self, author_l, title_l, year_l,
+    #             author_r, title_r, year_r):
+    def __init__(self, left_data, right_data):
+        self._doc = Document(self.FILE)
+
+        self._author_l_form = self._doc.paragraphs[0]
+        self._title_l_form = self._doc.paragraphs[1]
+        self._year_l_form = self._doc.paragraphs[2]
+
+        # self.author_l = author_l
+        # self.title_l = title_l
+        # self.year_l = year_l
+
+        self.author_l = ", ".join(left_data['authors'])
+        # self.title_l = ". ".join([left_data['title'], left_data.get('subtitle', '')])
+        self.title_l = left_data['title']
+        try:
+            self.year_l = datetime.fromisoformat(left_data['publishedDate']).year
+        except ValueError:
+            self.year_l = left_data['publishedDate'].split('-')[0]
+        except KeyError:
+            self.year_l = ' '
+
+        self._author_r_form = self._doc.paragraphs[10].runs[7]
+        self._title_r_form = self._doc.paragraphs[11]
+        self._year_r_form = self._doc.paragraphs[12]
+
+        # self.author_r = author_r
+        # self.title_r = title_r
+        # self.year_r = year_r
+
+        self.author_r = ", ".join(right_data['authors'])
+        # self.title_r = ". ".join([right_data['title'], right_data.get('subtitle', '')])
+        self.title_r = right_data['title']
+        try:
+            self.year_r = datetime.fromisoformat(right_data['publishedDate']).year
+        except ValueError:
+            self.year_r = right_data['publishedDate'].split('-')[0]
+        except KeyError:
+            self.yearr = ' '
+
+        # self._generate_id()
+        # self._populate()
+
+    def _populate(self):
+        """Populate the form."""
+        self._author_l_form.text = self.author_l
+        self._title_l_form.text = self.title_l
+        self._year_l_form.text = str(self.year_l)
+
+        self._author_r_form.text = self.author_r
+        self._title_r_form.text = self.title_r
+        self._year_r_form.text = str(self.year_r)
+
+    def __repr__(self):
+        left = self.title_l
+        right = self.title_r
+        return f'{left} – {right}'
+
+
 class GoogleBooks():
     """A Google Books API representation."""
 
@@ -125,26 +191,33 @@ class Catalogue():
         logging.debug("Reading catalogue from %s", datafile)
         self._resolver = resolver
         self._barcodes = pd.read_csv(datafile,
-                                     dtype={'Barcode': str})
+                                     dtype={'Barcode': str},
+                                     sep=';')
         self.items = {}
-        self.populate()
+        self.load()
+        # self.populate()
 
-    def populate(self, load=True, persist=True):
+    def load(self):
+        """Load from storage."""
+        with open(self.JSONFILE) as prior_storage:
+            self.items = json.load(prior_storage)
+        logging.debug("Loaded %s items", len(self.items))
+
+    def populate(self, persist=True):
         """Populate the catalogue metadata.
 
         # Params:
-        load    (bool): Load previous persist storage.
         persist (bool): Persist to storage.
         """
-        if load:
-            with open(self.JSONFILE) as prior_storage:
-                self.items = json.load(prior_storage)
 
         for barcode in self._barcodes['Barcode']:
             if barcode not in self.items:
                 work = self._resolver.get_by_isbn(barcode)
-                volume = work['items'][0]['volumeInfo']
-                self.items[barcode] = volume
+                try:
+                    volume = work['items'][0]['volumeInfo']
+                    self.items[barcode] = volume
+                except KeyError:
+                    ...
 
         if persist:
             self.persist()
